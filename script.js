@@ -102,6 +102,8 @@ function initUI() {
   ui.controls = document.getElementById("controlsPanel");
   ui.controlsToggle = document.getElementById("controlsToggle");
   ui.buildBadge = document.getElementById("buildBadge");
+  ui.mathNoteToggle = document.getElementById("mathNoteToggle");
+  ui.mathNote = document.getElementById("mathNote");
 
   ui.noise.addEventListener("input", () => {
     state.params.noise = Number(ui.noise.value) / 100;
@@ -169,6 +171,7 @@ function initUI() {
 
   ui.piemButton.addEventListener("click", openOverlay);
   ui.closeOverlay.addEventListener("click", closeOverlay);
+  ui.mathNoteToggle.addEventListener("click", toggleMathNote);
   ui.overlay.addEventListener("click", (event) => {
     if (event.target.dataset.close) {
       closeOverlay();
@@ -1299,6 +1302,12 @@ function openOverlay() {
 function closeOverlay() {
   ui.overlay.classList.remove("is-open");
   ui.overlay.setAttribute("aria-hidden", "true");
+}
+
+function toggleMathNote() {
+  const expanded = ui.mathNoteToggle.getAttribute("aria-expanded") === "true";
+  ui.mathNoteToggle.setAttribute("aria-expanded", String(!expanded));
+  ui.mathNote.hidden = expanded;
 }
 
 function frame(timestamp) {
