@@ -18,8 +18,9 @@ const state = {
   hoverSlice: -1,
   lastFrame: 0,
   pulsePhase: 0,
-  beatClock: 0,
   beatInterval: 0.72,
+  schedulerId: 0,
+  visualBeats: [],
   piDigitIndex: 0,
   controlsOpen: false,
   pointerType: "mouse",
@@ -153,6 +154,11 @@ function initUI() {
     state.muted = !state.muted;
     updateAudioButton();
     updateAudioMix();
+    if (state.muted) {
+      stopAudioScheduler();
+    } else {
+      startAudioScheduler(false);
+    }
   });
 
   ui.controlsToggle.addEventListener("click", () => {
@@ -323,7 +329,7 @@ function startExperience() {
   state.muted = false;
   state.flash = 1;
   state.beatGlow = 1;
-  state.beatClock = 0;
+  state.visualBeats.length = 0;
   ui.startHint.style.display = "none";
 
   const audio = initAudio();
@@ -333,7 +339,7 @@ function startExperience() {
 
   updateAudioButton();
   updateAudioMix();
-  triggerBeat(true);
+  startAudioScheduler(true);
   spawnBurst(32);
 }
 
@@ -391,7 +397,10 @@ function initAudio() {
     noiseGain,
     filter,
     analyser,
-    noiseBuffer
+    noiseBuffer,
+    nextBeatTime: 0,
+    schedulerLookahead: 0.18,
+    schedulerIntervalMs: 50
   };
 
   updateAudioMix();
@@ -509,13 +518,7 @@ function updateState(dt) {
   updateSceneGeometry();
   updateHoverState();
 
-  if (state.running) {
-    state.beatClock += dt;
-    if (state.beatClock >= state.beatInterval) {
-      state.beatClock -= state.beatInterval;
-      triggerBeat();
-    }
-  }
+  flushVisualBeats();
 
   const targetCount = Math.floor(120 + state.params.noise * 180);
   while (state.particles.length < targetCount) {
@@ -559,23 +562,21 @@ function updateState(dt) {
   });
 }
 
-function triggerBeat(initial) {
+function triggerBeat(initial, atTime) {
   const piBeat = getPiBeatModulation();
-  state.flash = initial ? 1 : 0.7;
-  state.beatGlow = initial ? 1 : 0.96;
-  spawnBurst(initial ? 22 : 10);
-  triggerThump();
-  triggerBeatVoice(piBeat);
-  triggerPing(680 + state.params.beatPitch * 260, 0.022 + state.params.noise * 0.012);
+  queueVisualBeat(atTime, initial);
+  triggerThump(atTime);
+  triggerBeatVoice(piBeat, atTime);
+  triggerPing(680 + state.params.beatPitch * 260, 0.022 + state.params.noise * 0.012, atTime);
 }
 
-function triggerThump() {
+function triggerThump(atTime) {
   if (!state.audio || state.muted) {
     return;
   }
 
   const { ctx, pulseGain } = state.audio;
-  const time = ctx.currentTime;
+  const time = Math.max(ctx.currentTime + 0.005, atTime || ctx.currentTime);
   const osc = ctx.createOscillator();
   const gain = ctx.createGain();
 
@@ -592,13 +593,13 @@ function triggerThump() {
   osc.stop(time + 0.24);
 }
 
-function triggerPing(frequency, gainAmount) {
+function triggerPing(frequency, gainAmount, atTime) {
   if (!state.audio || state.muted) {
     return;
   }
 
   const { ctx, pulseGain } = state.audio;
-  const time = ctx.currentTime;
+  const time = Math.max(ctx.currentTime + 0.005, atTime || ctx.currentTime);
   const osc = ctx.createOscillator();
   const gain = ctx.createGain();
 
@@ -615,13 +616,13 @@ function triggerPing(frequency, gainAmount) {
   osc.stop(time + 0.18);
 }
 
-function triggerBeatVoice(piBeat) {
+function triggerBeatVoice(piBeat, atTime) {
   if (!state.audio || state.muted) {
     return;
   }
 
   const { ctx, beatGain, noiseBuffer } = state.audio;
-  const time = ctx.currentTime;
+  const time = Math.max(ctx.currentTime + 0.005, atTime || ctx.currentTime);
   const length = piBeat.duration;
   const baseFreq = piBeat.frequency;
 
@@ -679,6 +680,69 @@ function triggerBeatVoice(piBeat) {
   tickGain.connect(beatGain);
   tick.start(time);
   tick.stop(time + 0.06 + length * 0.22);
+}
+
+function startAudioScheduler(fireImmediately) {
+  if (!state.audio) {
+    return;
+  }
+
+  stopAudioScheduler();
+  const { ctx } = state.audio;
+  state.audio.firstScheduledBeat = fireImmediately;
+  state.audio.nextBeatTime = ctx.currentTime + (fireImmediately ? 0.02 : state.beatInterval);
+  scheduleAudioBeats();
+  state.schedulerId = window.setInterval(scheduleAudioBeats, state.audio.schedulerIntervalMs);
+}
+
+function stopAudioScheduler() {
+  if (state.schedulerId) {
+    window.clearInterval(state.schedulerId);
+    state.schedulerId = 0;
+  }
+}
+
+function scheduleAudioBeats() {
+  if (!state.audio || !state.running || state.muted || state.audio.ctx.state !== "running") {
+    return;
+  }
+
+  const { ctx } = state.audio;
+  const horizon = ctx.currentTime + state.audio.schedulerLookahead;
+  while (state.audio.nextBeatTime <= horizon) {
+    triggerBeat(Boolean(state.audio.firstScheduledBeat), state.audio.nextBeatTime);
+    state.audio.firstScheduledBeat = false;
+    state.audio.nextBeatTime += state.beatInterval;
+  }
+}
+
+function queueVisualBeat(atTime, initial) {
+  const dueAt = performance.now() + Math.max(0, ((atTime || 0) - (state.audio ? state.audio.ctx.currentTime : 0)) * 1000);
+  state.visualBeats.push({
+    dueAt,
+    initial
+  });
+}
+
+function flushVisualBeats() {
+  if (!state.visualBeats.length) {
+    return;
+  }
+
+  const now = performance.now();
+  state.visualBeats = state.visualBeats.filter((beat) => {
+    if (beat.dueAt > now) {
+      return true;
+    }
+    fireVisualBeat(beat.initial);
+    return false;
+  });
+}
+
+function fireVisualBeat(initial) {
+  state.flash = initial ? 1 : 0.7;
+  state.beatGlow = initial ? 1 : 0.96;
+  spawnBurst(initial ? 22 : 10);
 }
 
 function getPiBeatModulation() {
