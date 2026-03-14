@@ -240,7 +240,7 @@ function isLandscape() {
 
 function updateModeNote() {
   if (state.params.mode === "pi") {
-    ui.modeNote.textContent = "Pi Series - shape from sums.";
+    ui.modeNote.textContent = "sums sharpen the form.";
     return;
   }
   if (state.params.mode === "quasi") {
@@ -710,17 +710,20 @@ function renderParticles(cx, cy, radius) {
         : (Math.random() - 0.5) * state.params.noise * 28;
     }
     if (mode === "pi") {
-      jitter += getPiSeriesValue(particle.angle + state.time * 0.2) * 7;
+      jitter += getPiSeriesValue(particle.angle + state.time * 0.2) * (9 + state.beatGlow * 4);
     }
     const distance = particle.radius + jitter;
     const x = cx + Math.cos(particle.angle) * distance;
     const y = cy + Math.sin(particle.angle) * distance;
     const color = mode === "pi" ? "255, 213, 122" : quasi ? "124, 247, 255" : "255, 123, 200";
+    const harmonicAlpha = mode === "pi"
+      ? 0.9 + Math.abs(getPiSeriesValue(particle.angle + state.time * 0.18)) * 0.45 + state.beatGlow * 0.12
+      : 1;
 
     ctx.beginPath();
     const alpha = noiseType === "smooth" ? particle.alpha * 0.82 : particle.alpha;
-    ctx.fillStyle = `rgba(${color}, ${alpha})`;
-    ctx.arc(x, y, particle.size, 0, TAU);
+    ctx.fillStyle = `rgba(${color}, ${Math.min(0.95, alpha * harmonicAlpha)})`;
+    ctx.arc(x, y, particle.size * harmonicAlpha, 0, TAU);
     ctx.fill();
 
     if ((quasi || mode === "pi" || noiseType === "band") && particle.index % 7 === 0) {
@@ -764,7 +767,7 @@ function renderPie(cx, cy, radius, noise) {
     const mid = start + sliceAngle * 0.5;
     const active = i === state.hoverSlice;
     const wobble = state.running ? Math.sin(state.time * 2.6 + i * 0.8) * noise * 0.04 : 0;
-    const piLift = state.params.mode === "pi" ? getPiSeriesValue(mid + state.time * 0.22) * 0.05 : 0;
+    const piLift = state.params.mode === "pi" ? getPiSeriesValue(mid + state.time * 0.22) * (0.08 + state.beatGlow * 0.025) : 0;
     const outer = radius * (1 + wobble + piLift + (active ? 0.06 : 0));
 
     ctx.beginPath();
@@ -854,16 +857,17 @@ function renderHalo(cx, cy, radius) {
 
 function renderPiSeriesLayer(cx, cy, radius) {
   const ctx = state.ctx;
-  const steps = 120;
-  const amplitude = radius * (0.035 + state.params.order * 0.006);
-  const shimmer = state.time * 0.25;
+  const orderMix = (state.params.order - 1) / 8;
+  const steps = 168;
+  const amplitude = radius * (0.05 + orderMix * 0.055 + state.beatGlow * 0.02);
+  const shimmer = state.time * (0.22 + orderMix * 0.08 + state.params.beatPitch * 0.06);
 
   ctx.save();
   ctx.beginPath();
   for (let i = 0; i <= steps; i += 1) {
     const t = (i / steps) * TAU;
     const sum = getPiSeriesValue(t + shimmer);
-    const smooth = Math.tanh(sum * 0.82);
+    const smooth = Math.tanh(sum * (0.78 + orderMix * 0.5));
     const ringRadius = radius * 1.1 + smooth * amplitude;
     const x = cx + Math.cos(t) * ringRadius;
     const y = cy + Math.sin(t) * ringRadius;
@@ -875,18 +879,20 @@ function renderPiSeriesLayer(cx, cy, radius) {
   }
 
   ctx.closePath();
-  ctx.strokeStyle = "rgba(255, 214, 129, 0.42)";
-  ctx.lineWidth = 1.6;
-  ctx.shadowColor = "rgba(255, 214, 129, 0.32)";
-  ctx.shadowBlur = 22;
+  ctx.fillStyle = `rgba(255, 214, 129, ${0.02 + orderMix * 0.05 + state.beatGlow * 0.05})`;
+  ctx.fill();
+  ctx.strokeStyle = `rgba(255, 214, 129, ${0.4 + orderMix * 0.18 + state.beatGlow * 0.14})`;
+  ctx.lineWidth = 1.5 + orderMix * 0.8;
+  ctx.shadowColor = "rgba(255, 214, 129, 0.36)";
+  ctx.shadowBlur = 24 + state.beatGlow * 12;
   ctx.stroke();
 
   ctx.beginPath();
   for (let i = 0; i <= steps; i += 1) {
     const t = (i / steps) * TAU;
     const sum = getPiSeriesValue(t + shimmer + 0.18);
-    const smooth = Math.tanh(sum * 0.72);
-    const ringRadius = radius * 1.18 + smooth * amplitude * 0.6;
+    const smooth = Math.tanh(sum * (0.72 + orderMix * 0.38));
+    const ringRadius = radius * 1.18 + smooth * amplitude * (0.62 + orderMix * 0.22);
     const x = cx + Math.cos(t) * ringRadius;
     const y = cy + Math.sin(t) * ringRadius;
     if (i === 0) {
@@ -895,9 +901,27 @@ function renderPiSeriesLayer(cx, cy, radius) {
       ctx.lineTo(x, y);
     }
   }
-  ctx.strokeStyle = "rgba(124, 247, 255, 0.18)";
-  ctx.lineWidth = 1;
+  ctx.strokeStyle = `rgba(124, 247, 255, ${0.16 + orderMix * 0.12 + state.beatGlow * 0.08})`;
+  ctx.lineWidth = 0.9 + orderMix * 0.5;
   ctx.shadowBlur = 0;
+  ctx.stroke();
+
+  ctx.beginPath();
+  for (let i = 0; i <= steps; i += 1) {
+    const t = (i / steps) * TAU;
+    const sum = getPiSeriesValue(t + shimmer - 0.12);
+    const smooth = Math.tanh(sum * (0.92 + orderMix * 0.4));
+    const ringRadius = radius * 1.04 + smooth * amplitude * 0.34;
+    const x = cx + Math.cos(t) * ringRadius;
+    const y = cy + Math.sin(t) * ringRadius;
+    if (i === 0) {
+      ctx.moveTo(x, y);
+    } else {
+      ctx.lineTo(x, y);
+    }
+  }
+  ctx.strokeStyle = `rgba(255, 247, 224, ${0.12 + orderMix * 0.16 + state.beatGlow * 0.16})`;
+  ctx.lineWidth = 0.7 + orderMix * 0.35;
   ctx.stroke();
   ctx.restore();
 }
