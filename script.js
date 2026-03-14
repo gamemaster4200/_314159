@@ -344,12 +344,14 @@ function initAudio() {
   const ctx = new AudioContextClass();
   const master = ctx.createGain();
   const pulseGain = ctx.createGain();
+  const beatGain = ctx.createGain();
   const noiseGain = ctx.createGain();
   const filter = ctx.createBiquadFilter();
   const analyser = ctx.createAnalyser();
 
   master.gain.value = 0.7;
   pulseGain.gain.value = 0.0001;
+  beatGain.gain.value = 1;
   noiseGain.gain.value = 0.0001;
   filter.type = "bandpass";
   filter.frequency.value = 1200;
@@ -370,6 +372,7 @@ function initAudio() {
   filter.connect(noiseGain);
   noiseGain.connect(master);
   pulseGain.connect(master);
+  beatGain.connect(master);
   master.connect(analyser);
   analyser.connect(ctx.destination);
   noiseSource.start();
@@ -378,6 +381,7 @@ function initAudio() {
     ctx,
     master,
     pulseGain,
+    beatGain,
     noiseGain,
     filter,
     analyser,
@@ -409,17 +413,17 @@ function updateAudioMix() {
     filter.type = "lowpass";
     filter.frequency.setValueAtTime(950 + state.params.noise * 1250, time);
     filter.Q.setValueAtTime(0.35, time);
-    noiseGain.gain.linearRampToValueAtTime(active ? 0.01 + state.params.noise * 0.045 : 0.0001, time + 0.1);
+    noiseGain.gain.linearRampToValueAtTime(active ? 0.008 + state.params.noise * 0.034 : 0.0001, time + 0.1);
   } else if (type === "band") {
     filter.type = "bandpass";
     filter.frequency.setValueAtTime(520 + state.params.noise * 1700, time);
     filter.Q.setValueAtTime(3.2, time);
-    noiseGain.gain.linearRampToValueAtTime(active ? 0.018 + state.params.noise * 0.04 : 0.0001, time + 0.1);
+    noiseGain.gain.linearRampToValueAtTime(active ? 0.015 + state.params.noise * 0.03 : 0.0001, time + 0.1);
   } else {
     filter.type = "bandpass";
     filter.frequency.setValueAtTime(700 + state.params.noise * 2400, time);
     filter.Q.setValueAtTime(0.8, time);
-    noiseGain.gain.linearRampToValueAtTime(active ? 0.02 + state.params.noise * 0.06 : 0.0001, time + 0.1);
+    noiseGain.gain.linearRampToValueAtTime(active ? 0.015 + state.params.noise * 0.045 : 0.0001, time + 0.1);
   }
 }
 
@@ -549,11 +553,11 @@ function updateState(dt) {
 
 function triggerBeat(initial) {
   state.flash = initial ? 1 : 0.7;
-  state.beatGlow = initial ? 1 : 0.82;
+  state.beatGlow = initial ? 1 : 0.96;
   spawnBurst(initial ? 22 : 10);
   triggerThump();
   triggerBeatVoice();
-  triggerPing(720 + state.params.beatPitch * 380, 0.05 + state.params.noise * 0.04);
+  triggerPing(680 + state.params.beatPitch * 260, 0.022 + state.params.noise * 0.012);
 }
 
 function triggerThump() {
@@ -607,23 +611,36 @@ function triggerBeatVoice() {
     return;
   }
 
-  const { ctx, pulseGain, noiseBuffer } = state.audio;
+  const { ctx, beatGain, noiseBuffer } = state.audio;
   const time = ctx.currentTime;
-  const length = 0.045 + state.params.beatLength * 0.22;
-  const baseFreq = 120 + state.params.beatPitch * 320;
+  const length = 0.06 + state.params.beatLength * 0.36;
+  const baseFreq = 110 + state.params.beatPitch * 520;
 
-  const osc = ctx.createOscillator();
-  const gain = ctx.createGain();
-  osc.type = "triangle";
-  osc.frequency.setValueAtTime(baseFreq, time);
-  osc.frequency.exponentialRampToValueAtTime(Math.max(70, baseFreq * 0.64), time + length);
-  gain.gain.setValueAtTime(0.0001, time);
-  gain.gain.linearRampToValueAtTime(0.22, time + 0.008);
-  gain.gain.exponentialRampToValueAtTime(0.0001, time + length);
-  osc.connect(gain);
-  gain.connect(pulseGain);
-  osc.start(time);
-  osc.stop(time + length + 0.02);
+  const bodyOsc = ctx.createOscillator();
+  const bodyGain = ctx.createGain();
+  bodyOsc.type = "triangle";
+  bodyOsc.frequency.setValueAtTime(baseFreq, time);
+  bodyOsc.frequency.exponentialRampToValueAtTime(Math.max(80, baseFreq * 0.58), time + length);
+  bodyGain.gain.setValueAtTime(0.0001, time);
+  bodyGain.gain.linearRampToValueAtTime(0.34, time + 0.006);
+  bodyGain.gain.exponentialRampToValueAtTime(0.0001, time + length);
+  bodyOsc.connect(bodyGain);
+  bodyGain.connect(beatGain);
+  bodyOsc.start(time);
+  bodyOsc.stop(time + length + 0.03);
+
+  const edgeOsc = ctx.createOscillator();
+  const edgeGain = ctx.createGain();
+  edgeOsc.type = "square";
+  edgeOsc.frequency.setValueAtTime(baseFreq * 1.85, time);
+  edgeOsc.frequency.exponentialRampToValueAtTime(baseFreq * 0.92, time + 0.045);
+  edgeGain.gain.setValueAtTime(0.0001, time);
+  edgeGain.gain.linearRampToValueAtTime(0.08, time + 0.003);
+  edgeGain.gain.exponentialRampToValueAtTime(0.0001, time + 0.05);
+  edgeOsc.connect(edgeGain);
+  edgeGain.connect(beatGain);
+  edgeOsc.start(time);
+  edgeOsc.stop(time + 0.06);
 
   const tick = ctx.createBufferSource();
   const tickFilter = ctx.createBiquadFilter();
@@ -631,15 +648,15 @@ function triggerBeatVoice() {
   tick.buffer = noiseBuffer;
   tickFilter.type = "bandpass";
   tickFilter.frequency.setValueAtTime(baseFreq * 2.4, time);
-  tickFilter.Q.setValueAtTime(1.4, time);
+  tickFilter.Q.setValueAtTime(2.1, time);
   tickGain.gain.setValueAtTime(0.0001, time);
-  tickGain.gain.linearRampToValueAtTime(0.04, time + 0.003);
-  tickGain.gain.exponentialRampToValueAtTime(0.0001, time + 0.04 + state.params.beatLength * 0.04);
+  tickGain.gain.linearRampToValueAtTime(0.075, time + 0.002);
+  tickGain.gain.exponentialRampToValueAtTime(0.0001, time + 0.055 + state.params.beatLength * 0.05);
   tick.connect(tickFilter);
   tickFilter.connect(tickGain);
-  tickGain.connect(pulseGain);
+  tickGain.connect(beatGain);
   tick.start(time);
-  tick.stop(time + 0.06 + state.params.beatLength * 0.05);
+  tick.stop(time + 0.08 + state.params.beatLength * 0.06);
 }
 
 function render() {
