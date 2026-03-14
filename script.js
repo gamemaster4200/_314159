@@ -6,6 +6,7 @@ const state = {
   ctx: null,
   width: 0,
   height: 0,
+  canvasRect: null,
   dpr: Math.min(window.devicePixelRatio || 1, 2),
   time: 0,
   running: false,
@@ -24,9 +25,23 @@ const state = {
     slices: 12,
     mode: "random"
   },
+  pointer: {
+    x: 0,
+    y: 0,
+    active: false
+  },
+  scene: {
+    cx: 0,
+    cy: 0,
+    baseRadius: 0,
+    drawRadius: 0,
+    rotation: 0,
+    sliceAngle: TAU / 12
+  },
   particles: [],
   sparks: [],
-  audio: null
+  audio: null,
+  debug: false
 };
 
 const ui = {};
@@ -44,6 +59,7 @@ function initCanvas() {
   state.ctx = state.canvas.getContext("2d");
 
   window.addEventListener("resize", resize);
+  document.addEventListener("fullscreenchange", resize);
   if (window.visualViewport) {
     window.visualViewport.addEventListener("resize", resize);
     window.visualViewport.addEventListener("scroll", resize);
@@ -52,6 +68,7 @@ function initCanvas() {
   state.canvas.addEventListener("pointerdown", handleCanvasPointerDown);
   state.canvas.addEventListener("pointermove", handlePointerMove);
   state.canvas.addEventListener("pointerleave", () => {
+    state.pointer.active = false;
     state.hoverSlice = -1;
   });
 }
@@ -83,7 +100,8 @@ function initUI() {
 
   ui.slices.addEventListener("input", () => {
     state.params.slices = Number(ui.slices.value);
-    state.hoverSlice = -1;
+    updateSceneGeometry();
+    updateHoverState();
   });
 
   ui.mode.addEventListener("change", () => {
@@ -91,6 +109,7 @@ function initUI() {
     updateModeNote();
     respawnParticles();
     spawnBurst(14);
+    updateHoverState();
   });
 
   ui.audioToggle.addEventListener("click", () => {
@@ -134,17 +153,21 @@ function initUI() {
 
 function resize() {
   state.dpr = Math.min(window.devicePixelRatio || 1, 2);
-  state.width = Math.max(320, Math.round(window.innerWidth || document.documentElement.clientWidth));
-  state.height = Math.max(320, Math.round(getViewportHeight()));
+  const viewportHeight = Math.max(320, Math.round(getViewportHeight()));
+  document.documentElement.style.setProperty("--app-height", `${viewportHeight}px`);
 
-  document.documentElement.style.setProperty("--app-height", `${state.height}px`);
+  state.canvasRect = state.canvas.getBoundingClientRect();
+  state.width = Math.max(320, Math.round(state.canvasRect.width));
+  state.height = Math.max(320, Math.round(state.canvasRect.height));
 
-  state.canvas.width = Math.floor(state.width * state.dpr);
-  state.canvas.height = Math.floor(state.height * state.dpr);
-  state.canvas.style.width = `${state.width}px`;
-  state.canvas.style.height = `${state.height}px`;
+  state.canvas.width = Math.round(state.canvasRect.width * state.dpr);
+  state.canvas.height = Math.round(state.canvasRect.height * state.dpr);
+  state.canvas.style.width = `${state.canvasRect.width}px`;
+  state.canvas.style.height = `${state.canvasRect.height}px`;
   state.ctx.setTransform(state.dpr, 0, 0, state.dpr, 0, 0);
 
+  updateSceneGeometry();
+  updateHoverState();
   syncResponsiveUI();
 }
 
@@ -189,7 +212,7 @@ function updateAudioButton() {
   ui.audioToggle.textContent = state.running && !state.muted ? "Mute" : "Play";
 }
 
-function getSceneMetrics() {
+function getBaseSceneMetrics() {
   const compact = isCompactLayout();
   const phone = isPhoneLayout();
   const landscape = isLandscape();
@@ -210,6 +233,17 @@ function getSceneMetrics() {
   }
 
   return { cx, cy, radius };
+}
+
+function updateSceneGeometry() {
+  const base = getBaseSceneMetrics();
+  const pulse = state.running ? 1 + Math.sin(state.pulsePhase * TAU) * (0.03 + state.params.pulse * 0.05) : 1;
+  state.scene.cx = base.cx;
+  state.scene.cy = base.cy;
+  state.scene.baseRadius = base.radius;
+  state.scene.drawRadius = base.radius * pulse;
+  state.scene.rotation = state.time * (state.running ? 0.08 : 0.02);
+  state.scene.sliceAngle = TAU / state.params.slices;
 }
 
 function seedParticles(count) {
@@ -341,31 +375,15 @@ function pulseToInterval() {
 
 function handlePointerMove(event) {
   state.pointerType = event.pointerType || state.pointerType;
-  const metrics = getSceneMetrics();
-  const dx = event.clientX - metrics.cx;
-  const dy = event.clientY - metrics.cy;
-  const dist = Math.hypot(dx, dy);
-
-  if (dist > metrics.radius * 1.16) {
-    state.hoverSlice = -1;
-    return;
-  }
-
-  if (state.pointerType === "touch") {
-    state.hoverSlice = -1;
-    return;
-  }
-
-  let angle = Math.atan2(dy, dx);
-  if (angle < 0) {
-    angle += TAU;
-  }
-  state.hoverSlice = Math.floor((angle / TAU) * state.params.slices);
+  const point = getPointerPosition(event);
+  state.pointer.x = point.x;
+  state.pointer.y = point.y;
+  state.pointer.active = true;
+  updateHoverState();
 }
 
 function createParticle(index, initial) {
-  const metrics = getSceneMetrics();
-  const baseRadius = metrics.radius * 1.04;
+  const baseRadius = state.scene.baseRadius * 1.04;
   const band = 42 + state.params.noise * 130;
   let angle;
   let ring;
@@ -408,6 +426,8 @@ function updateState(dt) {
   state.flash = Math.max(0, state.flash - dt * 1.8);
   state.pulsePhase += dt * (0.8 + state.params.pulse * 2.4);
   state.beatInterval = pulseToInterval();
+  updateSceneGeometry();
+  updateHoverState();
 
   if (state.running) {
     state.beatClock += dt;
@@ -502,24 +522,24 @@ function render() {
   const ctx = state.ctx;
   const w = state.width;
   const h = state.height;
-  const metrics = getSceneMetrics();
-  const pulse = state.running ? 1 + Math.sin(state.pulsePhase * TAU) * (0.03 + state.params.pulse * 0.05) : 1;
-  const radius = metrics.radius * pulse;
+  const scene = state.scene;
+  const radius = scene.drawRadius;
   const noise = state.params.noise;
 
   ctx.clearRect(0, 0, w, h);
 
-  const bg = ctx.createRadialGradient(metrics.cx, metrics.cy, 0, metrics.cx, metrics.cy, Math.max(w, h) * 0.65);
+  const bg = ctx.createRadialGradient(scene.cx, scene.cy, 0, scene.cx, scene.cy, Math.max(w, h) * 0.65);
   bg.addColorStop(0, "rgba(14, 28, 53, 0.35)");
   bg.addColorStop(0.42, "rgba(5, 10, 24, 0.12)");
   bg.addColorStop(1, "rgba(2, 4, 10, 0)");
   ctx.fillStyle = bg;
   ctx.fillRect(0, 0, w, h);
 
-  renderParticles(metrics.cx, metrics.cy, radius);
-  renderPie(metrics.cx, metrics.cy, radius, noise);
-  renderSparks(metrics.cx, metrics.cy, radius);
-  renderHalo(metrics.cx, metrics.cy, radius);
+  renderParticles(scene.cx, scene.cy, radius);
+  renderPie(scene.cx, scene.cy, radius, noise);
+  renderSparks(scene.cx, scene.cy, radius);
+  renderHalo(scene.cx, scene.cy, radius);
+  renderDebug();
 
   if (state.flash > 0) {
     ctx.fillStyle = `rgba(255, 244, 210, ${state.flash * 0.09})`;
@@ -562,8 +582,8 @@ function renderParticles(cx, cy, radius) {
 function renderPie(cx, cy, radius, noise) {
   const ctx = state.ctx;
   const slices = state.params.slices;
-  const slowRotation = state.time * (state.running ? 0.08 : 0.02);
-  const sliceAngle = TAU / slices;
+  const slowRotation = state.scene.rotation;
+  const sliceAngle = state.scene.sliceAngle;
 
   ctx.save();
   ctx.translate(cx, cy);
@@ -664,6 +684,64 @@ function renderHalo(cx, cy, radius) {
   ctx.lineWidth = 1.4;
   ctx.arc(cx, cy, radius * 1.03, 0, TAU);
   ctx.stroke();
+}
+
+function getPointerPosition(event) {
+  const rect = state.canvas.getBoundingClientRect();
+  state.canvasRect = rect;
+  return {
+    x: event.clientX - rect.left,
+    y: event.clientY - rect.top
+  };
+}
+
+function updateHoverState() {
+  if (!state.pointer.active || state.pointerType === "touch") {
+    state.hoverSlice = -1;
+    return;
+  }
+
+  const dx = state.pointer.x - state.scene.cx;
+  const dy = state.pointer.y - state.scene.cy;
+  const dist = Math.hypot(dx, dy);
+
+  if (dist > state.scene.drawRadius * 1.16) {
+    state.hoverSlice = -1;
+    return;
+  }
+
+  let angle = Math.atan2(dy, dx) - state.scene.rotation;
+  angle %= TAU;
+  if (angle < 0) {
+    angle += TAU;
+  }
+
+  state.hoverSlice = Math.floor(angle / state.scene.sliceAngle) % state.params.slices;
+}
+
+function renderDebug() {
+  if (!state.debug || !state.pointer.active) {
+    return;
+  }
+
+  const ctx = state.ctx;
+  ctx.save();
+  ctx.strokeStyle = "rgba(124, 247, 255, 0.7)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(state.scene.cx, state.scene.cy);
+  ctx.lineTo(state.pointer.x, state.pointer.y);
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.fillStyle = "rgba(255, 120, 200, 0.95)";
+  ctx.arc(state.pointer.x, state.pointer.y, 4, 0, TAU);
+  ctx.fill();
+
+  ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
+  ctx.font = "12px monospace";
+  ctx.fillText(`hover: ${state.hoverSlice}`, state.pointer.x + 10, state.pointer.y - 10);
+  ctx.restore();
 }
 
 function openOverlay() {
