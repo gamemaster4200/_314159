@@ -12,6 +12,7 @@ const state = {
   running: false,
   muted: false,
   flash: 0,
+  beatGlow: 0,
   hoverSlice: -1,
   lastFrame: 0,
   pulsePhase: 0,
@@ -24,7 +25,9 @@ const state = {
     pulse: 0.58,
     slices: 12,
     mode: "random",
-    order: 5
+    order: 5,
+    beatLength: 0.35,
+    beatPitch: 0.42
   },
   pointer: {
     x: 0,
@@ -81,6 +84,8 @@ function initUI() {
   ui.mode = document.getElementById("mode");
   ui.modeNote = document.getElementById("modeNote");
   ui.order = document.getElementById("order");
+  ui.beatLength = document.getElementById("beatLength");
+  ui.beatPitch = document.getElementById("beatPitch");
   ui.audioToggle = document.getElementById("audioToggle");
   ui.piemButton = document.getElementById("piemButton");
   ui.overlay = document.getElementById("piemOverlay");
@@ -116,6 +121,14 @@ function initUI() {
 
   ui.order.addEventListener("input", () => {
     state.params.order = Number(ui.order.value);
+  });
+
+  ui.beatLength.addEventListener("input", () => {
+    state.params.beatLength = Number(ui.beatLength.value) / 100;
+  });
+
+  ui.beatPitch.addEventListener("input", () => {
+    state.params.beatPitch = Number(ui.beatPitch.value) / 100;
   });
 
   ui.audioToggle.addEventListener("click", () => {
@@ -154,6 +167,8 @@ function initUI() {
   state.params.slices = Number(ui.slices.value);
   state.params.mode = ui.mode.value;
   state.params.order = Number(ui.order.value);
+  state.params.beatLength = Number(ui.beatLength.value) / 100;
+  state.params.beatPitch = Number(ui.beatPitch.value) / 100;
   state.beatInterval = pulseToInterval();
   updateModeNote();
   updateAudioButton();
@@ -252,10 +267,11 @@ function getBaseSceneMetrics() {
 function updateSceneGeometry() {
   const base = getBaseSceneMetrics();
   const pulse = state.running ? 1 + Math.sin(state.pulsePhase * TAU) * (0.03 + state.params.pulse * 0.05) : 1;
+  const beatAccent = 1 + state.beatGlow * 0.024;
   state.scene.cx = base.cx;
   state.scene.cy = base.cy;
   state.scene.baseRadius = base.radius;
-  state.scene.drawRadius = base.radius * pulse;
+  state.scene.drawRadius = base.radius * pulse * beatAccent;
   state.scene.rotation = state.time * (state.running ? 0.08 : 0.02);
   state.scene.sliceAngle = TAU / state.params.slices;
 }
@@ -291,6 +307,7 @@ function startExperience() {
   state.running = true;
   state.muted = false;
   state.flash = 1;
+  state.beatGlow = 1;
   state.beatClock = 0;
   ui.startHint.style.display = "none";
 
@@ -354,7 +371,8 @@ function initAudio() {
     pulseGain,
     noiseGain,
     filter,
-    analyser
+    analyser,
+    noiseBuffer
   };
 
   updateAudioMix();
@@ -446,6 +464,7 @@ function spawnBurst(amount) {
 function updateState(dt) {
   state.time += dt;
   state.flash = Math.max(0, state.flash - dt * 1.8);
+  state.beatGlow = Math.max(0, state.beatGlow - dt * 2.3);
   state.pulsePhase += dt * (0.8 + state.params.pulse * 2.4);
   state.beatInterval = pulseToInterval();
   updateSceneGeometry();
@@ -492,9 +511,11 @@ function updateState(dt) {
 
 function triggerBeat(initial) {
   state.flash = initial ? 1 : 0.7;
+  state.beatGlow = initial ? 1 : 0.82;
   spawnBurst(initial ? 22 : 10);
   triggerThump();
-  triggerPing(780 + Math.random() * 280, 0.08 + state.params.noise * 0.06);
+  triggerBeatVoice();
+  triggerPing(720 + state.params.beatPitch * 380, 0.05 + state.params.noise * 0.04);
 }
 
 function triggerThump() {
@@ -541,6 +562,46 @@ function triggerPing(frequency, gainAmount) {
   gain.connect(pulseGain);
   osc.start(time);
   osc.stop(time + 0.18);
+}
+
+function triggerBeatVoice() {
+  if (!state.audio || state.muted) {
+    return;
+  }
+
+  const { ctx, pulseGain, noiseBuffer } = state.audio;
+  const time = ctx.currentTime;
+  const length = 0.045 + state.params.beatLength * 0.22;
+  const baseFreq = 120 + state.params.beatPitch * 320;
+
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = "triangle";
+  osc.frequency.setValueAtTime(baseFreq, time);
+  osc.frequency.exponentialRampToValueAtTime(Math.max(70, baseFreq * 0.64), time + length);
+  gain.gain.setValueAtTime(0.0001, time);
+  gain.gain.linearRampToValueAtTime(0.22, time + 0.008);
+  gain.gain.exponentialRampToValueAtTime(0.0001, time + length);
+  osc.connect(gain);
+  gain.connect(pulseGain);
+  osc.start(time);
+  osc.stop(time + length + 0.02);
+
+  const tick = ctx.createBufferSource();
+  const tickFilter = ctx.createBiquadFilter();
+  const tickGain = ctx.createGain();
+  tick.buffer = noiseBuffer;
+  tickFilter.type = "bandpass";
+  tickFilter.frequency.setValueAtTime(baseFreq * 2.4, time);
+  tickFilter.Q.setValueAtTime(1.4, time);
+  tickGain.gain.setValueAtTime(0.0001, time);
+  tickGain.gain.linearRampToValueAtTime(0.04, time + 0.003);
+  tickGain.gain.exponentialRampToValueAtTime(0.0001, time + 0.04 + state.params.beatLength * 0.04);
+  tick.connect(tickFilter);
+  tickFilter.connect(tickGain);
+  tickGain.connect(pulseGain);
+  tick.start(time);
+  tick.stop(time + 0.06 + state.params.beatLength * 0.05);
 }
 
 function render() {
@@ -619,7 +680,7 @@ function renderPie(cx, cy, radius, noise) {
   ctx.rotate(slowRotation);
 
   const fill = ctx.createRadialGradient(0, 0, radius * 0.14, 0, 0, radius * 1.1);
-  fill.addColorStop(0, "rgba(255, 240, 178, 0.95)");
+  fill.addColorStop(0, `rgba(255, ${240 - state.params.beatPitch * 24}, 178, 0.95)`);
   fill.addColorStop(0.26, "rgba(255, 198, 115, 0.9)");
   fill.addColorStop(0.7, "rgba(255, 121, 179, 0.58)");
   fill.addColorStop(1, "rgba(64, 224, 255, 0.16)");
@@ -662,8 +723,8 @@ function renderPie(cx, cy, radius, noise) {
   }
 
   ctx.beginPath();
-  ctx.arc(0, 0, radius * 0.14, 0, TAU);
-  ctx.fillStyle = "rgba(255, 250, 240, 0.7)";
+  ctx.arc(0, 0, radius * (0.14 + state.beatGlow * 0.02), 0, TAU);
+  ctx.fillStyle = `rgba(255, 250, 240, ${0.7 + state.beatGlow * 0.14})`;
   ctx.fill();
 
   ctx.restore();
@@ -694,9 +755,10 @@ function renderSparks(cx, cy, radius) {
 function renderHalo(cx, cy, radius) {
   const ctx = state.ctx;
   const mode = state.params.mode;
-  const outer = radius * (1.25 + state.params.noise * 0.16);
+  const outer = radius * (1.25 + state.params.noise * 0.16 + state.beatGlow * 0.08);
   const halo = ctx.createRadialGradient(cx, cy, radius * 0.8, cx, cy, outer);
-  halo.addColorStop(0, "rgba(255, 199, 112, 0.18)");
+  const warmBoost = state.params.beatPitch * 22;
+  halo.addColorStop(0, `rgba(255, ${199 + warmBoost}, 112, 0.18)`);
   halo.addColorStop(0.55, "rgba(124, 247, 255, 0.13)");
   halo.addColorStop(1, "rgba(124, 247, 255, 0)");
 
@@ -716,7 +778,7 @@ function renderHalo(cx, cy, radius) {
   }
 
   ctx.beginPath();
-  ctx.strokeStyle = `rgba(124, 247, 255, ${0.15 + state.flash * 0.15})`;
+  ctx.strokeStyle = `rgba(124, 247, 255, ${0.15 + state.flash * 0.15 + state.beatGlow * 0.08})`;
   ctx.lineWidth = 1.4;
   ctx.arc(cx, cy, radius * 1.03, 0, TAU);
   ctx.stroke();
