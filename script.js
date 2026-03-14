@@ -23,7 +23,8 @@ const state = {
     noise: 0.45,
     pulse: 0.58,
     slices: 12,
-    mode: "random"
+    mode: "random",
+    order: 5
   },
   pointer: {
     x: 0,
@@ -79,6 +80,7 @@ function initUI() {
   ui.slices = document.getElementById("slices");
   ui.mode = document.getElementById("mode");
   ui.modeNote = document.getElementById("modeNote");
+  ui.order = document.getElementById("order");
   ui.audioToggle = document.getElementById("audioToggle");
   ui.piemButton = document.getElementById("piemButton");
   ui.overlay = document.getElementById("piemOverlay");
@@ -110,6 +112,10 @@ function initUI() {
     respawnParticles();
     spawnBurst(14);
     updateHoverState();
+  });
+
+  ui.order.addEventListener("input", () => {
+    state.params.order = Number(ui.order.value);
   });
 
   ui.audioToggle.addEventListener("click", () => {
@@ -146,6 +152,8 @@ function initUI() {
   state.params.noise = Number(ui.noise.value) / 100;
   state.params.pulse = Number(ui.pulse.value) / 100;
   state.params.slices = Number(ui.slices.value);
+  state.params.mode = ui.mode.value;
+  state.params.order = Number(ui.order.value);
   state.beatInterval = pulseToInterval();
   updateModeNote();
   updateAudioButton();
@@ -203,9 +211,15 @@ function isLandscape() {
 }
 
 function updateModeNote() {
-  ui.modeNote.textContent = state.params.mode === "random"
-    ? "Random scatters. Quasi settles."
-    : "Random scatters. Quasi settles.";
+  if (state.params.mode === "pi") {
+    ui.modeNote.textContent = "Pi Series - shape from sums.";
+    return;
+  }
+  if (state.params.mode === "quasi") {
+    ui.modeNote.textContent = "Quasi settles into an even field.";
+    return;
+  }
+  ui.modeNote.textContent = "Random scatters. Quasi settles.";
 }
 
 function updateAudioButton() {
@@ -391,6 +405,9 @@ function createParticle(index, initial) {
   if (state.params.mode === "quasi") {
     angle = index * GOLDEN_ANGLE + state.time * 0.07;
     ring = 24 + ((index * 0.61803398875) % 1) * band;
+  } else if (state.params.mode === "pi") {
+    angle = (index / Math.max(1, state.particles.length || 180)) * TAU + state.time * 0.03;
+    ring = 28 + Math.abs(getPiSeriesValue(angle + state.time * 0.16)) * band * 0.5 + Math.random() * band * 0.18;
   } else {
     angle = Math.random() * TAU;
     ring = Math.random() * band;
@@ -410,9 +427,14 @@ function createParticle(index, initial) {
 function spawnBurst(amount) {
   for (let i = 0; i < amount; i += 1) {
     const quasi = state.params.mode === "quasi";
+    const pi = state.params.mode === "pi";
     state.sparks.push({
-      angle: quasi ? (state.sparks.length + i) * GOLDEN_ANGLE : Math.random() * TAU,
-      radius: quasi ? (i % 3) * 4 : 0,
+      angle: quasi
+        ? (state.sparks.length + i) * GOLDEN_ANGLE
+        : pi
+          ? (i / Math.max(1, amount)) * TAU + state.time * 0.4
+          : Math.random() * TAU,
+      radius: pi ? Math.abs(getPiSeriesValue((i / Math.max(1, amount)) * TAU)) * 12 : quasi ? (i % 3) * 4 : 0,
       speed: 100 + Math.random() * (quasi ? 160 : 240),
       life: 0.55 + Math.random() * 0.7,
       maxLife: 0.55 + Math.random() * 0.7,
@@ -446,11 +468,14 @@ function updateState(dt) {
   }
 
   state.particles.forEach((particle, index) => {
-    const angularSpeed = state.params.mode === "quasi" ? 0.18 : 0.03;
+    const angularSpeed = state.params.mode === "quasi" ? 0.18 : state.params.mode === "pi" ? 0.14 : 0.03;
     particle.angle += dt * (particle.drift * 0.7 + angularSpeed);
     particle.radius += state.params.mode === "quasi"
       ? Math.sin(state.time * 1.2 + particle.index * 0.4) * 0.08
       : Math.sin(state.time * 1.8 + particle.index) * state.params.noise * 0.24;
+    if (state.params.mode === "pi") {
+      particle.radius += getPiSeriesValue(particle.angle + state.time * 0.28) * 0.12;
+    }
     particle.life -= dt;
 
     if (particle.life <= 0) {
@@ -549,25 +574,29 @@ function render() {
 
 function renderParticles(cx, cy, radius) {
   const ctx = state.ctx;
-  const quasi = state.params.mode === "quasi";
+  const mode = state.params.mode;
+  const quasi = mode === "quasi";
 
   state.particles.forEach((particle) => {
-    const jitter = quasi
+    let jitter = quasi
       ? Math.sin(state.time * 1.6 + particle.index * 0.5) * 2.5
       : (Math.random() - 0.5) * state.params.noise * 28;
+    if (mode === "pi") {
+      jitter += getPiSeriesValue(particle.angle + state.time * 0.2) * 7;
+    }
     const distance = particle.radius + jitter;
     const x = cx + Math.cos(particle.angle) * distance;
     const y = cy + Math.sin(particle.angle) * distance;
-    const color = quasi ? "124, 247, 255" : "255, 123, 200";
+    const color = mode === "pi" ? "255, 213, 122" : quasi ? "124, 247, 255" : "255, 123, 200";
 
     ctx.beginPath();
     ctx.fillStyle = `rgba(${color}, ${particle.alpha})`;
     ctx.arc(x, y, particle.size, 0, TAU);
     ctx.fill();
 
-    if (quasi && particle.index % 7 === 0) {
+    if ((quasi || mode === "pi") && particle.index % 7 === 0) {
       ctx.beginPath();
-      ctx.strokeStyle = `rgba(124, 247, 255, ${particle.alpha * 0.18})`;
+      ctx.strokeStyle = `rgba(${color}, ${particle.alpha * 0.18})`;
       ctx.lineWidth = 0.7;
       ctx.arc(cx, cy, distance, particle.angle - 0.08, particle.angle + 0.08);
       ctx.stroke();
@@ -603,9 +632,11 @@ function renderPie(cx, cy, radius, noise) {
   for (let i = 0; i < slices; i += 1) {
     const start = i * sliceAngle;
     const end = start + sliceAngle;
+    const mid = start + sliceAngle * 0.5;
     const active = i === state.hoverSlice;
     const wobble = state.running ? Math.sin(state.time * 2.6 + i * 0.8) * noise * 0.04 : 0;
-    const outer = radius * (1 + wobble + (active ? 0.06 : 0));
+    const piLift = state.params.mode === "pi" ? getPiSeriesValue(mid + state.time * 0.22) * 0.05 : 0;
+    const outer = radius * (1 + wobble + piLift + (active ? 0.06 : 0));
 
     ctx.beginPath();
     ctx.moveTo(0, 0);
@@ -640,7 +671,8 @@ function renderPie(cx, cy, radius, noise) {
 
 function renderSparks(cx, cy, radius) {
   const ctx = state.ctx;
-  const quasi = state.params.mode === "quasi";
+  const mode = state.params.mode;
+  const quasi = mode === "quasi";
 
   state.sparks.forEach((spark) => {
     const life = spark.life / spark.maxLife;
@@ -649,9 +681,11 @@ function renderSparks(cx, cy, radius) {
     const y = cy + Math.sin(spark.angle) * dist;
 
     ctx.beginPath();
-    ctx.fillStyle = quasi
-      ? `rgba(124, 247, 255, ${life * 0.55})`
-      : `rgba(255, 225, 149, ${life * 0.7})`;
+    ctx.fillStyle = mode === "pi"
+      ? `rgba(255, 213, 122, ${life * 0.62})`
+      : quasi
+        ? `rgba(124, 247, 255, ${life * 0.55})`
+        : `rgba(255, 225, 149, ${life * 0.7})`;
     ctx.arc(x, y, spark.size * life + 0.5, 0, TAU);
     ctx.fill();
   });
@@ -659,7 +693,7 @@ function renderSparks(cx, cy, radius) {
 
 function renderHalo(cx, cy, radius) {
   const ctx = state.ctx;
-  const quasi = state.params.mode === "quasi";
+  const mode = state.params.mode;
   const outer = radius * (1.25 + state.params.noise * 0.16);
   const halo = ctx.createRadialGradient(cx, cy, radius * 0.8, cx, cy, outer);
   halo.addColorStop(0, "rgba(255, 199, 112, 0.18)");
@@ -671,7 +705,9 @@ function renderHalo(cx, cy, radius) {
   ctx.arc(cx, cy, outer, 0, TAU);
   ctx.fill();
 
-  if (quasi) {
+  if (mode === "pi") {
+    renderPiSeriesLayer(cx, cy, radius);
+  } else if (mode === "quasi") {
     ctx.beginPath();
     ctx.strokeStyle = "rgba(124, 247, 255, 0.12)";
     ctx.lineWidth = 0.9;
@@ -684,6 +720,65 @@ function renderHalo(cx, cy, radius) {
   ctx.lineWidth = 1.4;
   ctx.arc(cx, cy, radius * 1.03, 0, TAU);
   ctx.stroke();
+}
+
+function renderPiSeriesLayer(cx, cy, radius) {
+  const ctx = state.ctx;
+  const steps = 120;
+  const amplitude = radius * (0.035 + state.params.order * 0.006);
+  const shimmer = state.time * 0.25;
+
+  ctx.save();
+  ctx.beginPath();
+  for (let i = 0; i <= steps; i += 1) {
+    const t = (i / steps) * TAU;
+    const sum = getPiSeriesValue(t + shimmer);
+    const smooth = Math.tanh(sum * 0.82);
+    const ringRadius = radius * 1.1 + smooth * amplitude;
+    const x = cx + Math.cos(t) * ringRadius;
+    const y = cy + Math.sin(t) * ringRadius;
+    if (i === 0) {
+      ctx.moveTo(x, y);
+    } else {
+      ctx.lineTo(x, y);
+    }
+  }
+
+  ctx.closePath();
+  ctx.strokeStyle = "rgba(255, 214, 129, 0.42)";
+  ctx.lineWidth = 1.6;
+  ctx.shadowColor = "rgba(255, 214, 129, 0.32)";
+  ctx.shadowBlur = 22;
+  ctx.stroke();
+
+  ctx.beginPath();
+  for (let i = 0; i <= steps; i += 1) {
+    const t = (i / steps) * TAU;
+    const sum = getPiSeriesValue(t + shimmer + 0.18);
+    const smooth = Math.tanh(sum * 0.72);
+    const ringRadius = radius * 1.18 + smooth * amplitude * 0.6;
+    const x = cx + Math.cos(t) * ringRadius;
+    const y = cy + Math.sin(t) * ringRadius;
+    if (i === 0) {
+      ctx.moveTo(x, y);
+    } else {
+      ctx.lineTo(x, y);
+    }
+  }
+  ctx.strokeStyle = "rgba(124, 247, 255, 0.18)";
+  ctx.lineWidth = 1;
+  ctx.shadowBlur = 0;
+  ctx.stroke();
+  ctx.restore();
+}
+
+function getPiSeriesValue(theta) {
+  let sum = 0;
+  for (let m = 0; m < state.params.order; m += 1) {
+    const n = 2 * m + 1;
+    sum += Math.sin(n * theta) / n;
+  }
+  return (4 / Math.PI) * sum;
 }
 
 function getPointerPosition(event) {
