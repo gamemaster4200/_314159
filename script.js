@@ -70,6 +70,7 @@ function initCanvas() {
 
   window.addEventListener("resize", resize);
   document.addEventListener("fullscreenchange", resize);
+  document.addEventListener("visibilitychange", handleVisibilityChange);
   if (window.visualViewport) {
     window.visualViewport.addEventListener("resize", resize);
     window.visualViewport.addEventListener("scroll", resize);
@@ -408,7 +409,8 @@ function initAudio() {
     noiseBuffer,
     nextBeatTime: 0,
     schedulerLookahead: 0.18,
-    schedulerIntervalMs: 50
+    schedulerIntervalMs: 50,
+    firstScheduledBeat: false
   };
 
   updateAudioMix();
@@ -697,6 +699,7 @@ function startAudioScheduler(fireImmediately) {
 
   stopAudioScheduler();
   const { ctx } = state.audio;
+  updateSchedulerTiming();
   state.audio.firstScheduledBeat = fireImmediately;
   state.audio.nextBeatTime = ctx.currentTime + (fireImmediately ? 0.02 : state.beatInterval);
   scheduleAudioBeats();
@@ -725,6 +728,9 @@ function scheduleAudioBeats() {
 }
 
 function queueVisualBeat(atTime, initial) {
+  if (document.hidden) {
+    return;
+  }
   const dueAt = performance.now() + Math.max(0, ((atTime || 0) - (state.audio ? state.audio.ctx.currentTime : 0)) * 1000);
   state.visualBeats.push({
     dueAt,
@@ -751,6 +757,49 @@ function fireVisualBeat(initial) {
   state.flash = initial ? 1 : 0.7;
   state.beatGlow = initial ? 1 : 0.96;
   spawnBurst(initial ? 22 : 10);
+}
+
+function handleVisibilityChange() {
+  if (!state.audio) {
+    return;
+  }
+
+  updateSchedulerTiming();
+  state.visualBeats.length = 0;
+
+  if (!state.running || state.muted) {
+    return;
+  }
+
+  if (state.audio.ctx.state === "running") {
+    scheduleAudioBeats();
+    restartAudioSchedulerInterval();
+  }
+}
+
+function updateSchedulerTiming() {
+  if (!state.audio) {
+    return;
+  }
+
+  if (document.hidden) {
+    state.audio.schedulerLookahead = 2.4;
+    state.audio.schedulerIntervalMs = 250;
+  } else {
+    state.audio.schedulerLookahead = 0.18;
+    state.audio.schedulerIntervalMs = 50;
+  }
+}
+
+function restartAudioSchedulerInterval() {
+  if (!state.audio || !state.running || state.muted) {
+    return;
+  }
+
+  if (state.schedulerId) {
+    window.clearInterval(state.schedulerId);
+  }
+  state.schedulerId = window.setInterval(scheduleAudioBeats, state.audio.schedulerIntervalMs);
 }
 
 function getPiBeatModulation() {
