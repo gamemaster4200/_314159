@@ -51,7 +51,7 @@ const state = {
 };
 
 const ui = {};
-const repoInfo = parseGitHubRemote(GITHUB_REMOTE);
+let repoInfo = null;
 
 window.addEventListener("load", () => {
   initCanvas();
@@ -969,19 +969,40 @@ function renderDebug() {
   ctx.restore();
 }
 
+function parsePagesRepoFromLocation() {
+  const host = window.location.hostname.toLowerCase();
+  if (!host.endsWith(".github.io")) {
+    return null;
+  }
+
+  const owner = host.slice(0, host.indexOf(".github.io"));
+  const repo = window.location.pathname.replace(/^\/+/, "").split("/").filter(Boolean)[0];
+  if (!owner || !repo) {
+    return null;
+  }
+
+  return createRepoInfo(owner, repo);
+}
+
 function parseGitHubRemote(remote) {
   const match = remote.match(/github\.com[:/]([^/]+)\/(.+?)(?:\.git)?$/i);
   if (!match) {
     return null;
   }
 
-  const owner = match[1];
-  const repo = match[2].replace(/\.git$/i, "");
+  return createRepoInfo(match[1], match[2].replace(/\.git$/i, ""));
+}
+
+function createRepoInfo(owner, repo) {
   return {
     owner,
     repo,
     repoUrl: `https://github.com/${owner}/${repo}`,
-    latestBuildUrl: `https://api.github.com/repos/${owner}/${repo}/pages/builds/latest`
+    latestBuildUrl: `https://api.github.com/repos/${owner}/${repo}/pages/builds/latest`,
+    latestCommitUrls: [
+      `https://api.github.com/repos/${owner}/${repo}/commits/master`,
+      `https://api.github.com/repos/${owner}/${repo}/commits/main`
+    ]
   };
 }
 
@@ -990,13 +1011,14 @@ function initBuildBadge() {
     return;
   }
 
+  repoInfo = parsePagesRepoFromLocation() || parseGitHubRemote(GITHUB_REMOTE);
   if (!repoInfo) {
-    ui.buildBadge.textContent = "version unavailable";
+    ui.buildBadge.textContent = "github";
     return;
   }
 
   ui.buildBadge.href = repoInfo.repoUrl;
-  ui.buildBadge.textContent = "repo";
+  ui.buildBadge.textContent = "github";
   loadBuildBadge();
 }
 
@@ -1006,29 +1028,19 @@ async function loadBuildBadge() {
   }
 
   try {
-    const response = await fetch(repoInfo.latestBuildUrl, {
-      headers: {
-        Accept: "application/vnd.github+json"
-      }
-    });
-
-    if (!response.ok) {
-      throw new Error(`GitHub API ${response.status}`);
-    }
-
-    const build = await response.json();
+    const build = await fetchGitHubJson(repoInfo.latestBuildUrl);
     const shortSha = build.commit ? String(build.commit).slice(0, 7) : "";
-    const status = formatBuildStatus(build.status, shortSha);
-    ui.buildBadge.textContent = status;
+    ui.buildBadge.textContent = formatBuildStatus(build.status, shortSha);
   } catch (error) {
-    ui.buildBadge.textContent = "version unavailable";
+    const commitLabel = await loadCommitBadge();
+    ui.buildBadge.textContent = commitLabel || "github";
   }
 }
 
 function formatBuildStatus(status, shortSha) {
   const value = String(status || "").toLowerCase();
   if (value === "built" || value === "succeeded" || value === "success") {
-    return shortSha ? `deployed ${shortSha}` : "deployed";
+    return shortSha ? `live ${shortSha}` : "live";
   }
   if (value === "building") {
     return shortSha ? `building ${shortSha}` : "building...";
@@ -1039,7 +1051,41 @@ function formatBuildStatus(status, shortSha) {
   if (value) {
     return shortSha ? `${value} ${shortSha}` : value;
   }
-  return shortSha ? `repo ${shortSha}` : "repo";
+  return shortSha ? `live ${shortSha}` : "github";
+}
+
+async function loadCommitBadge() {
+  if (!repoInfo) {
+    return "";
+  }
+
+  for (const url of repoInfo.latestCommitUrls) {
+    try {
+      const commit = await fetchGitHubJson(url);
+      const sha = commit && commit.sha ? String(commit.sha).slice(0, 7) : "";
+      if (sha) {
+        return `latest ${sha}`;
+      }
+    } catch (error) {
+      continue;
+    }
+  }
+
+  return "";
+}
+
+async function fetchGitHubJson(url) {
+  const response = await fetch(url, {
+    headers: {
+      Accept: "application/vnd.github+json"
+    }
+  });
+
+  if (!response.ok) {
+    throw new Error(`GitHub API ${response.status}`);
+  }
+
+  return response.json();
 }
 
 function openOverlay() {

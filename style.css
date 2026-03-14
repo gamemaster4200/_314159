@@ -224,7 +224,9 @@ select:focus-visible {
   z-index: 4;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   min-height: 30px;
+  min-width: 108px;
   max-width: min(42vw, 180px);
   padding: 0 10px;
   border: 1px solid rgba(182, 221, 255, 0.14);
@@ -234,6 +236,9 @@ select:focus-visible {
   text-decoration: none;
   font-size: 0.72rem;
   letter-spacing: 0.03em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   backdrop-filter: blur(14px);
   box-shadow: 0 12px 30px rgba(0, 0, 0, 0.24);
   cursor: pointer;
@@ -364,6 +369,7 @@ select:focus-visible {
   .build-badge {
     right: 12px;
     bottom: calc(70px + env(safe-area-inset-bottom));
+    min-width: 102px;
     max-width: min(52vw, 190px);
   }
 }
@@ -439,6 +445,7 @@ select:focus-visible {
     right: 8px;
     bottom: calc(72px + env(safe-area-inset-bottom));
     min-height: 28px;
+    min-width: 94px;
     max-width: min(58vw, 180px);
     padding: 0 9px;
     font-size: 0.68rem;
