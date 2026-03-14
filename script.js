@@ -462,10 +462,10 @@ function createParticle(index, initial) {
   }
 
   if (state.params.noiseType === "band") {
-    ring = Math.round(ring / 18) * 18 + Math.random() * 6;
-    angle += (Math.random() - 0.5) * 0.18;
+    ring = Math.round(ring / 22) * 22 + Math.random() * 8;
+    angle += (Math.random() - 0.5) * 0.12;
   } else if (state.params.noiseType === "smooth") {
-    ring *= 0.85;
+    ring *= 0.72;
   }
 
   return {
@@ -526,13 +526,15 @@ function updateState(dt) {
   state.particles.forEach((particle, index) => {
     let angularSpeed = state.params.mode === "quasi" ? 0.18 : state.params.mode === "pi" ? 0.14 : 0.03;
     if (state.params.noiseType === "smooth") {
-      angularSpeed *= 0.72;
+      angularSpeed *= 0.55;
+    } else if (state.params.noiseType === "band") {
+      angularSpeed *= 0.88;
     }
     particle.angle += dt * (particle.drift * 0.7 + angularSpeed);
     if (state.params.noiseType === "smooth") {
-      particle.radius += Math.sin(state.time * 1.1 + particle.index * 0.34) * 0.12;
+      particle.radius += Math.sin(state.time * 0.82 + particle.index * 0.21) * 0.08;
     } else if (state.params.noiseType === "band") {
-      particle.radius += Math.sin(state.time * 3 + particle.index * 0.45) * 0.22;
+      particle.radius += Math.sin(state.time * 3.4 + particle.index * 0.6) * 0.32;
     } else {
       particle.radius += state.params.mode === "quasi"
         ? Math.sin(state.time * 1.2 + particle.index * 0.4) * 0.08
@@ -701,13 +703,13 @@ function renderParticles(cx, cy, radius) {
   state.particles.forEach((particle) => {
     let jitter;
     if (noiseType === "smooth") {
-      jitter = Math.sin(state.time * 1.3 + particle.index * 0.5) * 3.2;
+      jitter = Math.sin(state.time * 0.9 + particle.index * 0.34) * 1.8;
     } else if (noiseType === "band") {
-      jitter = Math.sin(state.time * 2.1 + particle.index * 0.25) * 8;
+      jitter = Math.sin(state.time * 2.4 + particle.index * 0.18) * 12;
     } else {
       jitter = quasi
         ? Math.sin(state.time * 1.6 + particle.index * 0.5) * 2.5
-        : (Math.random() - 0.5) * state.params.noise * 28;
+        : (Math.random() - 0.5) * state.params.noise * 36;
     }
     if (mode === "pi") {
       jitter += getPiSeriesValue(particle.angle + state.time * 0.2) * (9 + state.beatGlow * 4);
@@ -719,19 +721,28 @@ function renderParticles(cx, cy, radius) {
     const harmonicAlpha = mode === "pi"
       ? 0.9 + Math.abs(getPiSeriesValue(particle.angle + state.time * 0.18)) * 0.45 + state.beatGlow * 0.12
       : 1;
+    const noiseAlpha = noiseType === "white" ? 1.15 : noiseType === "band" ? 1.05 : 0.78;
+    const sizeScale = noiseType === "white" ? 0.9 : noiseType === "band" ? 1.15 : 1;
 
     ctx.beginPath();
     const alpha = noiseType === "smooth" ? particle.alpha * 0.82 : particle.alpha;
-    ctx.fillStyle = `rgba(${color}, ${Math.min(0.95, alpha * harmonicAlpha)})`;
-    ctx.arc(x, y, particle.size * harmonicAlpha, 0, TAU);
+    ctx.fillStyle = `rgba(${color}, ${Math.min(0.95, alpha * harmonicAlpha * noiseAlpha)})`;
+    ctx.arc(x, y, particle.size * harmonicAlpha * sizeScale, 0, TAU);
     ctx.fill();
 
     if ((quasi || mode === "pi" || noiseType === "band") && particle.index % 7 === 0) {
       ctx.beginPath();
-      ctx.strokeStyle = `rgba(${color}, ${alpha * 0.18})`;
-      ctx.lineWidth = 0.7;
+      ctx.strokeStyle = `rgba(${color}, ${alpha * (noiseType === "band" ? 0.26 : 0.18)})`;
+      ctx.lineWidth = noiseType === "band" ? 1.05 : 0.7;
       ctx.arc(cx, cy, distance, particle.angle - 0.08, particle.angle + 0.08);
       ctx.stroke();
+    }
+
+    if (noiseType === "white" && particle.index % 9 === 0) {
+      ctx.beginPath();
+      ctx.fillStyle = `rgba(255, 245, 230, ${alpha * 0.08})`;
+      ctx.arc(x, y, particle.size * 2.6, 0, TAU);
+      ctx.fill();
     }
 
     if (distance < radius * 0.95) {
@@ -805,10 +816,11 @@ function renderSparks(cx, cy, radius) {
   const ctx = state.ctx;
   const mode = state.params.mode;
   const quasi = mode === "quasi";
+  const noiseType = state.params.noiseType;
 
   state.sparks.forEach((spark) => {
     const life = spark.life / spark.maxLife;
-    const dist = radius * 0.95 + spark.radius;
+    const dist = radius * 0.95 + spark.radius + (noiseType === "band" ? Math.sin(spark.angle * 6 + state.time * 1.6) * 12 : 0);
     const x = cx + Math.cos(spark.angle) * dist;
     const y = cy + Math.sin(spark.angle) * dist;
 
@@ -817,8 +829,8 @@ function renderSparks(cx, cy, radius) {
       ? `rgba(255, 213, 122, ${life * 0.62})`
       : quasi
         ? `rgba(124, 247, 255, ${life * 0.55})`
-        : `rgba(255, 225, 149, ${life * 0.7})`;
-    ctx.arc(x, y, spark.size * life + 0.5, 0, TAU);
+        : `rgba(255, 225, 149, ${life * (noiseType === "white" ? 0.82 : 0.7)})`;
+    ctx.arc(x, y, spark.size * life * (noiseType === "band" ? 1.2 : 1) + 0.5, 0, TAU);
     ctx.fill();
   });
 }
@@ -826,11 +838,18 @@ function renderSparks(cx, cy, radius) {
 function renderHalo(cx, cy, radius) {
   const ctx = state.ctx;
   const mode = state.params.mode;
-  const outer = radius * (1.25 + state.params.noise * 0.16 + state.beatGlow * 0.08);
+  const noiseType = state.params.noiseType;
+  const outer = radius * (
+    1.25
+    + state.params.noise * 0.16
+    + state.beatGlow * 0.08
+    + (noiseType === "band" ? 0.05 : 0)
+    - (noiseType === "smooth" ? 0.03 : 0)
+  );
   const halo = ctx.createRadialGradient(cx, cy, radius * 0.8, cx, cy, outer);
   const warmBoost = state.params.beatPitch * 22;
   halo.addColorStop(0, `rgba(255, ${199 + warmBoost}, 112, 0.18)`);
-  halo.addColorStop(0.55, "rgba(124, 247, 255, 0.13)");
+  halo.addColorStop(0.55, noiseType === "smooth" ? "rgba(124, 247, 255, 0.09)" : "rgba(124, 247, 255, 0.13)");
   halo.addColorStop(1, "rgba(124, 247, 255, 0)");
 
   ctx.beginPath();
@@ -849,8 +868,8 @@ function renderHalo(cx, cy, radius) {
   }
 
   ctx.beginPath();
-  ctx.strokeStyle = `rgba(124, 247, 255, ${0.15 + state.flash * 0.15 + state.beatGlow * 0.08})`;
-  ctx.lineWidth = 1.4;
+  ctx.strokeStyle = `rgba(124, 247, 255, ${0.15 + state.flash * 0.15 + state.beatGlow * 0.08 + (noiseType === "band" ? 0.06 : 0)})`;
+  ctx.lineWidth = noiseType === "smooth" ? 1.15 : noiseType === "band" ? 1.7 : 1.4;
   ctx.arc(cx, cy, radius * 1.03, 0, TAU);
   ctx.stroke();
 }
