@@ -104,6 +104,9 @@ function initUI() {
   ui.buildBadge = document.getElementById("buildBadge");
   ui.mathNoteToggle = document.getElementById("mathNoteToggle");
   ui.mathNote = document.getElementById("mathNote");
+  ui.descriptionButton = document.getElementById("descriptionButton");
+  ui.descriptionOverlay = document.getElementById("descriptionOverlay");
+  ui.closeDescription = document.getElementById("closeDescription");
 
   ui.noise.addEventListener("input", () => {
     state.params.noise = Number(ui.noise.value) / 100;
@@ -172,9 +175,16 @@ function initUI() {
   ui.piemButton.addEventListener("click", openOverlay);
   ui.closeOverlay.addEventListener("click", closeOverlay);
   ui.mathNoteToggle.addEventListener("click", toggleMathNote);
+  ui.descriptionButton.addEventListener("click", openDescription);
+  ui.closeDescription.addEventListener("click", closeDescription);
   ui.overlay.addEventListener("click", (event) => {
     if (event.target.dataset.close) {
       closeOverlay();
+    }
+  });
+  ui.descriptionOverlay.addEventListener("click", (event) => {
+    if (event.target.dataset.descriptionClose) {
+      closeDescription();
     }
   });
   ui.startHint.addEventListener("click", handleGesture);
@@ -182,6 +192,9 @@ function initUI() {
   window.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && ui.overlay.classList.contains("is-open")) {
       closeOverlay();
+    }
+    if (event.key === "Escape" && ui.descriptionOverlay.classList.contains("is-open")) {
+      closeDescription();
     }
   });
 
@@ -1336,6 +1349,16 @@ function openOverlay() {
 function closeOverlay() {
   ui.overlay.classList.remove("is-open");
   ui.overlay.setAttribute("aria-hidden", "true");
+}
+
+function openDescription() {
+  ui.descriptionOverlay.classList.add("is-open");
+  ui.descriptionOverlay.setAttribute("aria-hidden", "false");
+}
+
+function closeDescription() {
+  ui.descriptionOverlay.classList.remove("is-open");
+  ui.descriptionOverlay.setAttribute("aria-hidden", "true");
 }
 
 function toggleMathNote() {

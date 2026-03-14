@@ -32,9 +32,12 @@
         <span class="eyebrow">OMG I have a tasty algorithm</span>
         <h1>Pi Day Pulse</h1>
         <p>Аудио-визуальный Pi Day-объект: круг, пирог, шум, пульс и звук оживают после запуска.</p>
-        <button id="mathNoteToggle" class="note-toggle" type="button" aria-expanded="false" aria-controls="mathNote">
-          Для математиков
-        </button>
+        <div class="brand-actions">
+          <button id="descriptionButton" class="note-toggle" type="button">Описание</button>
+          <button id="mathNoteToggle" class="note-toggle" type="button" aria-expanded="false" aria-controls="mathNote">
+            Для математиков
+          </button>
+        </div>
         <div id="mathNote" class="math-note" hidden>
           Random, Quasi и Pi Series показывают, как частичные суммы, гармоники и сходимость собирают форму из шума: тригонометрия здесь работает как алгебра гармоник, а не только как геометрия.
         </div>
@@ -109,6 +112,16 @@
           <p>Пою я piem о форме.</p>
           <p>Тут и круг и пирог: запускаем мы проект снова.</p>
         </div>
+      </article>
+    </div>
+
+    <div id="descriptionOverlay" class="overlay" aria-hidden="true">
+      <div class="overlay-backdrop" data-description-close="true"></div>
+      <article class="info-card" role="dialog" aria-modal="true" aria-labelledby="descriptionTitle">
+        <button id="closeDescription" class="close" type="button" aria-label="Close">+</button>
+        <p class="eyebrow">Описание</p>
+        <h2 id="descriptionTitle">Кратко</h2>
+        <p class="info-copy">Сделал маленький Pi Day арт-объект: круг-пирог, шум, пульс, бит и немного математики внутри. После запуска сцена оживает, а под красивой картинкой прячется слой про гармоники, суммы и форму, возникающую из структуры.</p>
       </article>
     </div>
 
