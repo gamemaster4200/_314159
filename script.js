@@ -26,6 +26,7 @@ const state = {
     slices: 12,
     mode: "random",
     order: 5,
+    noiseType: "white",
     beatLength: 0.35,
     beatPitch: 0.42
   },
@@ -84,6 +85,7 @@ function initUI() {
   ui.mode = document.getElementById("mode");
   ui.modeNote = document.getElementById("modeNote");
   ui.order = document.getElementById("order");
+  ui.noiseType = document.getElementById("noiseType");
   ui.beatLength = document.getElementById("beatLength");
   ui.beatPitch = document.getElementById("beatPitch");
   ui.audioToggle = document.getElementById("audioToggle");
@@ -121,6 +123,12 @@ function initUI() {
 
   ui.order.addEventListener("input", () => {
     state.params.order = Number(ui.order.value);
+  });
+
+  ui.noiseType.addEventListener("change", () => {
+    state.params.noiseType = ui.noiseType.value;
+    respawnParticles();
+    updateAudioMix();
   });
 
   ui.beatLength.addEventListener("input", () => {
@@ -167,6 +175,7 @@ function initUI() {
   state.params.slices = Number(ui.slices.value);
   state.params.mode = ui.mode.value;
   state.params.order = Number(ui.order.value);
+  state.params.noiseType = ui.noiseType.value;
   state.params.beatLength = Number(ui.beatLength.value) / 100;
   state.params.beatPitch = Number(ui.beatPitch.value) / 100;
   state.beatInterval = pulseToInterval();
@@ -387,6 +396,7 @@ function updateAudioMix() {
   const { ctx, master, noiseGain, filter } = state.audio;
   const time = ctx.currentTime;
   const active = state.running && !state.muted ? 1 : 0;
+  const type = state.params.noiseType;
 
   master.gain.cancelScheduledValues(time);
   master.gain.setValueAtTime(master.gain.value, time);
@@ -394,11 +404,23 @@ function updateAudioMix() {
 
   noiseGain.gain.cancelScheduledValues(time);
   noiseGain.gain.setValueAtTime(noiseGain.gain.value, time);
-  noiseGain.gain.linearRampToValueAtTime(active ? 0.02 + state.params.noise * 0.06 : 0.0001, time + 0.1);
 
-  filter.frequency.cancelScheduledValues(time);
-  filter.frequency.setValueAtTime(filter.frequency.value, time);
-  filter.frequency.linearRampToValueAtTime(700 + state.params.noise * 2400, time + 0.1);
+  if (type === "smooth") {
+    filter.type = "lowpass";
+    filter.frequency.setValueAtTime(950 + state.params.noise * 1250, time);
+    filter.Q.setValueAtTime(0.35, time);
+    noiseGain.gain.linearRampToValueAtTime(active ? 0.01 + state.params.noise * 0.045 : 0.0001, time + 0.1);
+  } else if (type === "band") {
+    filter.type = "bandpass";
+    filter.frequency.setValueAtTime(520 + state.params.noise * 1700, time);
+    filter.Q.setValueAtTime(3.2, time);
+    noiseGain.gain.linearRampToValueAtTime(active ? 0.018 + state.params.noise * 0.04 : 0.0001, time + 0.1);
+  } else {
+    filter.type = "bandpass";
+    filter.frequency.setValueAtTime(700 + state.params.noise * 2400, time);
+    filter.Q.setValueAtTime(0.8, time);
+    noiseGain.gain.linearRampToValueAtTime(active ? 0.02 + state.params.noise * 0.06 : 0.0001, time + 0.1);
+  }
 }
 
 function pulseToInterval() {
@@ -429,6 +451,13 @@ function createParticle(index, initial) {
   } else {
     angle = Math.random() * TAU;
     ring = Math.random() * band;
+  }
+
+  if (state.params.noiseType === "band") {
+    ring = Math.round(ring / 18) * 18 + Math.random() * 6;
+    angle += (Math.random() - 0.5) * 0.18;
+  } else if (state.params.noiseType === "smooth") {
+    ring *= 0.85;
   }
 
   return {
@@ -487,11 +516,20 @@ function updateState(dt) {
   }
 
   state.particles.forEach((particle, index) => {
-    const angularSpeed = state.params.mode === "quasi" ? 0.18 : state.params.mode === "pi" ? 0.14 : 0.03;
+    let angularSpeed = state.params.mode === "quasi" ? 0.18 : state.params.mode === "pi" ? 0.14 : 0.03;
+    if (state.params.noiseType === "smooth") {
+      angularSpeed *= 0.72;
+    }
     particle.angle += dt * (particle.drift * 0.7 + angularSpeed);
-    particle.radius += state.params.mode === "quasi"
-      ? Math.sin(state.time * 1.2 + particle.index * 0.4) * 0.08
-      : Math.sin(state.time * 1.8 + particle.index) * state.params.noise * 0.24;
+    if (state.params.noiseType === "smooth") {
+      particle.radius += Math.sin(state.time * 1.1 + particle.index * 0.34) * 0.12;
+    } else if (state.params.noiseType === "band") {
+      particle.radius += Math.sin(state.time * 3 + particle.index * 0.45) * 0.22;
+    } else {
+      particle.radius += state.params.mode === "quasi"
+        ? Math.sin(state.time * 1.2 + particle.index * 0.4) * 0.08
+        : Math.sin(state.time * 1.8 + particle.index) * state.params.noise * 0.24;
+    }
     if (state.params.mode === "pi") {
       particle.radius += getPiSeriesValue(particle.angle + state.time * 0.28) * 0.12;
     }
@@ -637,11 +675,19 @@ function renderParticles(cx, cy, radius) {
   const ctx = state.ctx;
   const mode = state.params.mode;
   const quasi = mode === "quasi";
+  const noiseType = state.params.noiseType;
 
   state.particles.forEach((particle) => {
-    let jitter = quasi
-      ? Math.sin(state.time * 1.6 + particle.index * 0.5) * 2.5
-      : (Math.random() - 0.5) * state.params.noise * 28;
+    let jitter;
+    if (noiseType === "smooth") {
+      jitter = Math.sin(state.time * 1.3 + particle.index * 0.5) * 3.2;
+    } else if (noiseType === "band") {
+      jitter = Math.sin(state.time * 2.1 + particle.index * 0.25) * 8;
+    } else {
+      jitter = quasi
+        ? Math.sin(state.time * 1.6 + particle.index * 0.5) * 2.5
+        : (Math.random() - 0.5) * state.params.noise * 28;
+    }
     if (mode === "pi") {
       jitter += getPiSeriesValue(particle.angle + state.time * 0.2) * 7;
     }
@@ -651,13 +697,14 @@ function renderParticles(cx, cy, radius) {
     const color = mode === "pi" ? "255, 213, 122" : quasi ? "124, 247, 255" : "255, 123, 200";
 
     ctx.beginPath();
-    ctx.fillStyle = `rgba(${color}, ${particle.alpha})`;
+    const alpha = noiseType === "smooth" ? particle.alpha * 0.82 : particle.alpha;
+    ctx.fillStyle = `rgba(${color}, ${alpha})`;
     ctx.arc(x, y, particle.size, 0, TAU);
     ctx.fill();
 
-    if ((quasi || mode === "pi") && particle.index % 7 === 0) {
+    if ((quasi || mode === "pi" || noiseType === "band") && particle.index % 7 === 0) {
       ctx.beginPath();
-      ctx.strokeStyle = `rgba(${color}, ${particle.alpha * 0.18})`;
+      ctx.strokeStyle = `rgba(${color}, ${alpha * 0.18})`;
       ctx.lineWidth = 0.7;
       ctx.arc(cx, cy, distance, particle.angle - 0.08, particle.angle + 0.08);
       ctx.stroke();
