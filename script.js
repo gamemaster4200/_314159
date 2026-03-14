@@ -1,6 +1,7 @@
 const TAU = Math.PI * 2;
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
 const GITHUB_REMOTE = "git@github.com:gamemaster4200/_314159.git";
+const PI_DIGITS = "1415926535897932384626433832795028841971693993751058209749445923078164062862089986280348253421170679";
 
 const state = {
   canvas: null,
@@ -19,6 +20,7 @@ const state = {
   pulsePhase: 0,
   beatClock: 0,
   beatInterval: 0.72,
+  piDigitIndex: 0,
   controlsOpen: false,
   pointerType: "mouse",
   params: {
@@ -558,11 +560,12 @@ function updateState(dt) {
 }
 
 function triggerBeat(initial) {
+  const piBeat = getPiBeatModulation();
   state.flash = initial ? 1 : 0.7;
   state.beatGlow = initial ? 1 : 0.96;
   spawnBurst(initial ? 22 : 10);
   triggerThump();
-  triggerBeatVoice();
+  triggerBeatVoice(piBeat);
   triggerPing(680 + state.params.beatPitch * 260, 0.022 + state.params.noise * 0.012);
 }
 
@@ -612,57 +615,93 @@ function triggerPing(frequency, gainAmount) {
   osc.stop(time + 0.18);
 }
 
-function triggerBeatVoice() {
+function triggerBeatVoice(piBeat) {
   if (!state.audio || state.muted) {
     return;
   }
 
   const { ctx, beatGain, noiseBuffer } = state.audio;
   const time = ctx.currentTime;
-  const length = 0.06 + state.params.beatLength * 0.36;
-  const baseFreq = 110 + state.params.beatPitch * 520;
+  const length = piBeat.duration;
+  const baseFreq = piBeat.frequency;
 
   const bodyOsc = ctx.createOscillator();
   const bodyGain = ctx.createGain();
-  bodyOsc.type = "triangle";
+  bodyOsc.type = "sine";
   bodyOsc.frequency.setValueAtTime(baseFreq, time);
-  bodyOsc.frequency.exponentialRampToValueAtTime(Math.max(80, baseFreq * 0.58), time + length);
+  bodyOsc.frequency.exponentialRampToValueAtTime(Math.max(36, baseFreq * 0.72), time + length);
   bodyGain.gain.setValueAtTime(0.0001, time);
-  bodyGain.gain.linearRampToValueAtTime(0.34, time + 0.006);
+  bodyGain.gain.linearRampToValueAtTime(0.42, time + 0.008);
   bodyGain.gain.exponentialRampToValueAtTime(0.0001, time + length);
   bodyOsc.connect(bodyGain);
   bodyGain.connect(beatGain);
   bodyOsc.start(time);
   bodyOsc.stop(time + length + 0.03);
 
+  const subOsc = ctx.createOscillator();
+  const subGain = ctx.createGain();
+  subOsc.type = "triangle";
+  subOsc.frequency.setValueAtTime(Math.max(28, baseFreq * 0.5), time);
+  subOsc.frequency.exponentialRampToValueAtTime(Math.max(24, baseFreq * 0.44), time + length * 0.95);
+  subGain.gain.setValueAtTime(0.0001, time);
+  subGain.gain.linearRampToValueAtTime(0.24, time + 0.01);
+  subGain.gain.exponentialRampToValueAtTime(0.0001, time + length * 1.05);
+  subOsc.connect(subGain);
+  subGain.connect(beatGain);
+  subOsc.start(time);
+  subOsc.stop(time + length + 0.04);
+
   const edgeOsc = ctx.createOscillator();
   const edgeGain = ctx.createGain();
   edgeOsc.type = "square";
-  edgeOsc.frequency.setValueAtTime(baseFreq * 1.85, time);
-  edgeOsc.frequency.exponentialRampToValueAtTime(baseFreq * 0.92, time + 0.045);
+  edgeOsc.frequency.setValueAtTime(baseFreq * 2.2, time);
+  edgeOsc.frequency.exponentialRampToValueAtTime(baseFreq * 1.1, time + 0.05);
   edgeGain.gain.setValueAtTime(0.0001, time);
-  edgeGain.gain.linearRampToValueAtTime(0.08, time + 0.003);
-  edgeGain.gain.exponentialRampToValueAtTime(0.0001, time + 0.05);
+  edgeGain.gain.linearRampToValueAtTime(0.11, time + 0.002);
+  edgeGain.gain.exponentialRampToValueAtTime(0.0001, time + 0.055);
   edgeOsc.connect(edgeGain);
   edgeGain.connect(beatGain);
   edgeOsc.start(time);
-  edgeOsc.stop(time + 0.06);
+  edgeOsc.stop(time + 0.065);
 
   const tick = ctx.createBufferSource();
   const tickFilter = ctx.createBiquadFilter();
   const tickGain = ctx.createGain();
   tick.buffer = noiseBuffer;
   tickFilter.type = "bandpass";
-  tickFilter.frequency.setValueAtTime(baseFreq * 2.4, time);
-  tickFilter.Q.setValueAtTime(2.1, time);
+  tickFilter.frequency.setValueAtTime(baseFreq * 2.8, time);
+  tickFilter.Q.setValueAtTime(2.6, time);
   tickGain.gain.setValueAtTime(0.0001, time);
-  tickGain.gain.linearRampToValueAtTime(0.075, time + 0.002);
-  tickGain.gain.exponentialRampToValueAtTime(0.0001, time + 0.055 + state.params.beatLength * 0.05);
+  tickGain.gain.linearRampToValueAtTime(0.085, time + 0.002);
+  tickGain.gain.exponentialRampToValueAtTime(0.0001, time + 0.05 + length * 0.2);
   tick.connect(tickFilter);
   tickFilter.connect(tickGain);
   tickGain.connect(beatGain);
   tick.start(time);
-  tick.stop(time + 0.08 + state.params.beatLength * 0.06);
+  tick.stop(time + 0.06 + length * 0.22);
+}
+
+function getPiBeatModulation() {
+  const pitchDigit = Number(PI_DIGITS[state.piDigitIndex % PI_DIGITS.length]);
+  const durationDigit = Number(PI_DIGITS[(state.piDigitIndex + 1) % PI_DIGITS.length]);
+  state.piDigitIndex = (state.piDigitIndex + 2) % PI_DIGITS.length;
+
+  const centerSemitone = -3 + state.params.beatPitch * 9;
+  const digitSemitoneOffsets = [-7, -5, -4, -2, -1, 0, 1, 2, 4, 5];
+  const semitoneOffset = digitSemitoneOffsets[pitchDigit];
+  const baseFrequency = 55 * Math.pow(2, centerSemitone / 12);
+  const frequency = baseFrequency * Math.pow(2, semitoneOffset / 12);
+
+  const baseDuration = 0.08 + state.params.beatLength * 0.26;
+  const durationSteps = [0.68, 0.82, 1.0, 1.16, 1.34];
+  const duration = baseDuration * durationSteps[durationDigit % durationSteps.length];
+
+  return {
+    pitchDigit,
+    durationDigit,
+    frequency: Math.max(34, Math.min(120, frequency)),
+    duration: Math.max(0.06, Math.min(0.42, duration))
+  };
 }
 
 function render() {
