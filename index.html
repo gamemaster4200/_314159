@@ -24,44 +24,44 @@
       <section id="controlsPanel" class="controls" aria-label="Controls">
         <label>
           <span>Noise</span>
-          <input id="noise" type="range" min="0" max="100" value="45">
+          <input id="noise" type="range" min="0" max="100" value="52">
         </label>
         <label>
           <span>Pulse</span>
-          <input id="pulse" type="range" min="0" max="100" value="58">
+          <input id="pulse" type="range" min="0" max="100" value="64">
         </label>
         <label>
           <span>Slices</span>
-          <input id="slices" type="range" min="4" max="24" value="12">
+          <input id="slices" type="range" min="4" max="24" value="10">
         </label>
         <label>
           <span>Mode</span>
           <select id="mode">
             <option value="random">Random</option>
             <option value="quasi">Quasi</option>
-            <option value="pi">Pi Series</option>
+            <option value="pi" selected>Pi Series</option>
           </select>
           <small id="modeNote" class="mode-note">Random scatters. Quasi settles.</small>
         </label>
         <label>
           <span>Order</span>
-          <input id="order" type="range" min="1" max="9" value="5">
+          <input id="order" type="range" min="1" max="9" value="7">
         </label>
         <label>
           <span>Noise Type</span>
           <select id="noiseType">
             <option value="white">White</option>
             <option value="smooth">Smooth</option>
-            <option value="band">Band</option>
+            <option value="band" selected>Band</option>
           </select>
         </label>
         <label>
           <span>Beat Length</span>
-          <input id="beatLength" type="range" min="0" max="100" value="35">
+          <input id="beatLength" type="range" min="0" max="100" value="46">
         </label>
         <label>
           <span>Beat Pitch</span>
-          <input id="beatPitch" type="range" min="0" max="100" value="42">
+          <input id="beatPitch" type="range" min="0" max="100" value="48">
         </label>
         <div class="button-row">
           <button id="audioToggle" type="button">Play</button>
