@@ -1,5 +1,6 @@
 const TAU = Math.PI * 2;
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
+const GITHUB_REMOTE = "git@github.com:gamemaster4200/_314159.git";
 
 const state = {
   canvas: null,
@@ -50,6 +51,7 @@ const state = {
 };
 
 const ui = {};
+const repoInfo = parseGitHubRemote(GITHUB_REMOTE);
 
 window.addEventListener("load", () => {
   initCanvas();
@@ -95,6 +97,7 @@ function initUI() {
   ui.startHint = document.getElementById("startHint");
   ui.controls = document.getElementById("controlsPanel");
   ui.controlsToggle = document.getElementById("controlsToggle");
+  ui.buildBadge = document.getElementById("buildBadge");
 
   ui.noise.addEventListener("input", () => {
     state.params.noise = Number(ui.noise.value) / 100;
@@ -181,6 +184,7 @@ function initUI() {
   state.beatInterval = pulseToInterval();
   updateModeNote();
   updateAudioButton();
+  initBuildBadge();
 }
 
 function resize() {
@@ -963,6 +967,79 @@ function renderDebug() {
   ctx.font = "12px monospace";
   ctx.fillText(`hover: ${state.hoverSlice}`, state.pointer.x + 10, state.pointer.y - 10);
   ctx.restore();
+}
+
+function parseGitHubRemote(remote) {
+  const match = remote.match(/github\.com[:/]([^/]+)\/(.+?)(?:\.git)?$/i);
+  if (!match) {
+    return null;
+  }
+
+  const owner = match[1];
+  const repo = match[2].replace(/\.git$/i, "");
+  return {
+    owner,
+    repo,
+    repoUrl: `https://github.com/${owner}/${repo}`,
+    latestBuildUrl: `https://api.github.com/repos/${owner}/${repo}/pages/builds/latest`
+  };
+}
+
+function initBuildBadge() {
+  if (!ui.buildBadge) {
+    return;
+  }
+
+  if (!repoInfo) {
+    ui.buildBadge.textContent = "version unavailable";
+    return;
+  }
+
+  ui.buildBadge.href = repoInfo.repoUrl;
+  ui.buildBadge.textContent = "repo";
+  loadBuildBadge();
+}
+
+async function loadBuildBadge() {
+  if (!repoInfo) {
+    return;
+  }
+
+  try {
+    const response = await fetch(repoInfo.latestBuildUrl, {
+      headers: {
+        Accept: "application/vnd.github+json"
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`GitHub API ${response.status}`);
+    }
+
+    const build = await response.json();
+    const shortSha = build.commit ? String(build.commit).slice(0, 7) : "";
+    const status = formatBuildStatus(build.status, shortSha);
+    ui.buildBadge.textContent = status;
+  } catch (error) {
+    ui.buildBadge.textContent = "version unavailable";
+  }
+}
+
+function formatBuildStatus(status, shortSha) {
+  const value = String(status || "").toLowerCase();
+  if (value === "built" || value === "succeeded" || value === "success") {
+    return shortSha ? `deployed ${shortSha}` : "deployed";
+  }
+  if (value === "building") {
+    return shortSha ? `building ${shortSha}` : "building...";
+  }
+  if (value === "queued" || value === "pending") {
+    return shortSha ? `queued ${shortSha}` : "queued...";
+  }
+  if (value) {
+    return shortSha ? `${value} ${shortSha}` : value;
+  }
+  return shortSha ? `repo ${shortSha}` : "repo";
 }
 
 function openOverlay() {

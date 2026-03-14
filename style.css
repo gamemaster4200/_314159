@@ -206,6 +206,37 @@ select:focus-visible {
   color: var(--text);
 }
 
+.build-badge {
+  position: absolute;
+  right: 16px;
+  bottom: calc(16px + env(safe-area-inset-bottom));
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  max-width: min(42vw, 180px);
+  padding: 0 10px;
+  border: 1px solid rgba(182, 221, 255, 0.14);
+  border-radius: 999px;
+  background: rgba(7, 11, 21, 0.48);
+  color: rgba(244, 247, 255, 0.72);
+  text-decoration: none;
+  font-size: 0.72rem;
+  letter-spacing: 0.03em;
+  backdrop-filter: blur(14px);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.24);
+  cursor: pointer;
+  transition: transform 160ms ease, background 160ms ease, border-color 160ms ease, color 160ms ease;
+}
+
+.build-badge:hover,
+.build-badge:focus-visible {
+  transform: translateY(-1px);
+  background: rgba(9, 14, 26, 0.66);
+  border-color: rgba(124, 247, 255, 0.24);
+  color: rgba(244, 247, 255, 0.92);
+}
+
 .overlay {
   position: absolute;
   inset: 0;
@@ -318,6 +349,12 @@ select:focus-visible {
     bottom: calc(76px + env(safe-area-inset-bottom));
     min-width: min(300px, calc(100vw - 32px));
   }
+
+  .build-badge {
+    right: 12px;
+    bottom: calc(70px + env(safe-area-inset-bottom));
+    max-width: min(52vw, 190px);
+  }
 }
 
 @media (max-width: 600px) {
@@ -385,6 +422,15 @@ select:focus-visible {
     min-height: 48px;
     padding: 0 16px;
     font-size: 0.9rem;
+  }
+
+  .build-badge {
+    right: 8px;
+    bottom: calc(72px + env(safe-area-inset-bottom));
+    min-height: 28px;
+    max-width: min(58vw, 180px);
+    padding: 0 9px;
+    font-size: 0.68rem;
   }
 
   .piem-card {
