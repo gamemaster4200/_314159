@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Pi Day Pulse</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="app">
+    <canvas id="scene" aria-hidden="true"></canvas>
+
+    <div class="hud">
+      <div class="brand">
+        <span class="eyebrow">Pi Day Signal</span>
+        <h1>Pie from noise</h1>
+        <p>Click anywhere to wake the pulse.</p>
+      </div>
+
+      <button id="controlsToggle" class="controls-toggle" type="button" aria-controls="controlsPanel" aria-expanded="false">
+        Controls
+      </button>
+
+      <section id="controlsPanel" class="controls" aria-label="Controls">
+        <label>
+          <span>Noise</span>
+          <input id="noise" type="range" min="0" max="100" value="45">
+        </label>
+        <label>
+          <span>Pulse</span>
+          <input id="pulse" type="range" min="0" max="100" value="58">
+        </label>
+        <label>
+          <span>Slices</span>
+          <input id="slices" type="range" min="4" max="24" value="12">
+        </label>
+        <label>
+          <span>Mode</span>
+          <select id="mode">
+            <option value="random">Random</option>
+            <option value="quasi">Quasi</option>
+          </select>
+          <small id="modeNote" class="mode-note">Random scatters. Quasi settles.</small>
+        </label>
+        <div class="button-row">
+          <button id="audioToggle" type="button">Play</button>
+          <button id="piemButton" type="button">Piem</button>
+        </div>
+      </section>
+    </div>
+
+    <button id="startHint" class="start-hint" type="button">Tap to begin the Pi pulse</button>
+
+    <div id="piemOverlay" class="overlay" aria-hidden="true">
+      <div class="overlay-backdrop" data-close="true"></div>
+      <article class="piem-card" role="dialog" aria-modal="true" aria-labelledby="piemTitle">
+        <button id="closeOverlay" class="close" type="button" aria-label="Close">+</button>
+        <p class="eyebrow">Meta-piem</p>
+        <h2 id="piemTitle">Secondary layer</h2>
+        <div class="poem">
+          <p>Тон и свет.</p>
+          <p>Шум.</p>
+          <p>Что я хочу, а?</p>
+          <p>Код.</p>
+          <p>Пою я piem о форме.</p>
+          <p>Тут и круг и пирог: запускаем мы проект снова.</p>
+        </div>
+      </article>
+    </div>
+  </main>
+
+  <script src="script.js"></script>
+</body>
+</html>
