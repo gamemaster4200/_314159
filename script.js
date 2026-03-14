@@ -583,6 +583,38 @@ function triggerBeat(initial, atTime) {
   triggerPing(680 + state.params.beatPitch * 260, 0.022 + state.params.noise * 0.012, atTime);
 }
 
+function triggerOffbeat(atTime) {
+  if (!state.audio || state.muted) {
+    return;
+  }
+
+  const { ctx, beatGain, noiseBuffer } = state.audio;
+  const time = Math.max(ctx.currentTime + 0.005, atTime || ctx.currentTime);
+
+  const tick = ctx.createBufferSource();
+  const highpass = ctx.createBiquadFilter();
+  const bandpass = ctx.createBiquadFilter();
+  const tickGain = ctx.createGain();
+
+  tick.buffer = noiseBuffer;
+  highpass.type = "highpass";
+  highpass.frequency.setValueAtTime(1800 + state.params.beatPitch * 700, time);
+  bandpass.type = "bandpass";
+  bandpass.frequency.setValueAtTime(2600 + state.params.beatPitch * 900, time);
+  bandpass.Q.setValueAtTime(1.8, time);
+
+  tickGain.gain.setValueAtTime(0.0001, time);
+  tickGain.gain.linearRampToValueAtTime(0.04, time + 0.0015);
+  tickGain.gain.exponentialRampToValueAtTime(0.0001, time + 0.045);
+
+  tick.connect(highpass);
+  highpass.connect(bandpass);
+  bandpass.connect(tickGain);
+  tickGain.connect(beatGain);
+  tick.start(time);
+  tick.stop(time + 0.05);
+}
+
 function triggerThump(atTime) {
   if (!state.audio || state.muted) {
     return;
@@ -724,7 +756,9 @@ function scheduleAudioBeats() {
   const { ctx } = state.audio;
   const horizon = ctx.currentTime + state.audio.schedulerLookahead;
   while (state.audio.nextBeatTime <= horizon) {
-    triggerBeat(Boolean(state.audio.firstScheduledBeat), state.audio.nextBeatTime);
+    const beatTime = state.audio.nextBeatTime;
+    triggerBeat(Boolean(state.audio.firstScheduledBeat), beatTime);
+    triggerOffbeat(beatTime + state.beatInterval * 0.5);
     state.audio.firstScheduledBeat = false;
     state.audio.nextBeatTime += state.beatInterval;
   }
